@@ -1,0 +1,85 @@
+{\rtf1\ansi\ansicpg1252\cocoartf1671\cocoasubrtf600
+{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww10800\viewh8400\viewkind0
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 import os\
+import time\
+import subprocess\
+import json\
+import shutil\
+\
+# Directory to watch for new files\
+watch_directory = "path/to/your/watch_directory"\
+output_directory = os.path.join(watch_directory, "output")\
+source_directory = os.path.join(watch_directory, "source")\
+processed_files = set()\
+\
+# Create the output and source directories if they don't exist\
+if not os.path.exists(output_directory):\
+    os.makedirs(output_directory)\
+if not os.path.exists(source_directory):\
+    os.makedirs(source_directory)\
+\
+# Function to get crop width from the user\
+def get_crop_width():\
+    while True:\
+        try:\
+            crop_width = int(input("Enter the desired crop width (1572 or 1678): "))\
+            if crop_width in [1572, 1678]:\
+                return crop_width\
+            else:\
+                print("Please enter either 1572 or 1678.")\
+        except ValueError:\
+            print("Invalid input. Please enter a number.")\
+\
+# Function to get video codec of the input file\
+def get_video_codec(input_path):\
+    ffprobe_command = [\
+        'ffprobe',\
+        '-v', 'error',\
+        '-select_streams', 'v:0',\
+        '-show_entries', 'stream=codec_name',\
+        '-of', 'json',\
+        input_path\
+    ]\
+    result = subprocess.run(ffprobe_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)\
+    codec_info = json.loads(result.stdout)\
+    return codec_info['streams'][0]['codec_name']\
+\
+# Function to crop video using ffmpeg\
+def crop_video(input_path, output_path, crop_width, crop_height):\
+    ffmpeg_command = [\
+        'ffmpeg',\
+        '-i', input_path,\
+        '-vf', f'crop=\{crop_width\}:\{crop_height\}',\
+        '-c:v', 'dnxhd',  # Use DNxHD codec for output\
+        '-profile:v', 'dnxhr_sq',  # DNxHR SQ 8-bit profile\
+        '-pix_fmt', 'yuv422p',  # Pixel format\
+        '-c:a', 'copy',  # Copy the audio without re-encoding\
+        output_path\
+    ]\
+    subprocess.run(ffmpeg_command)\
+\
+# Function to process new videos\
+def process_new_videos(crop_width):\
+    crop_height = 1080\
+    while True:\
+        files = set(os.listdir(watch_directory))\
+        new_files = files - processed_files - \{os.path.basename(f) for f in os.listdir(output_directory)\} - set(['output', 'source'])\
+        for file in new_files:\
+            if file.endswith(('.mp4', '.avi', '.mov', '.mkv')):  # Add more video formats if needed\
+                input_path = os.path.join(watch_directory, file)\
+                output_path = os.path.join(output_directory, file)\
+                crop_video(input_path, output_path, crop_width, crop_height)\
+                processed_files.add(file)\
+                # Move the source file to the source directory\
+                shutil.move(input_path, os.path.join(source_directory, file))\
+        time.sleep(5)  # Check for new files every 5 seconds\
+\
+if __name__ == "__main__":\
+    crop_width = get_crop_width()\
+    process_new_videos(crop_width)\
+}
